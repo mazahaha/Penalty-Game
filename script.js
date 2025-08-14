@@ -26,8 +26,13 @@ directionalLight.position.set(5, 10, 7.5);
 scene.add(directionalLight);
 
 // Add a ground plane
+const textureLoader = new THREE.TextureLoader();
+const grassTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/terrain/grasslight-big.jpg');
+grassTexture.wrapS = THREE.RepeatWrapping;
+grassTexture.wrapT = THREE.RepeatWrapping;
+grassTexture.repeat.set(10, 10);
 const planeGeometry = new THREE.PlaneGeometry(30, 30);
-const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x4CAF50 }); // Green like grass
+const planeMaterial = new THREE.MeshStandardMaterial({ map: grassTexture });
 const plane = new THREE.Mesh(planeGeometry, planeMaterial);
 plane.rotation.x = -Math.PI / 2; // Rotate it to be horizontal
 plane.position.y = -1;
@@ -69,73 +74,142 @@ scene.add(targetPlane);
 
 // Create Ball
 const ballGeometry = new THREE.SphereGeometry(0.22, 32, 32); // FIFA size 5 ball has ~22cm diameter
-const ballMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+const ballTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/checker.png');
+const ballMaterial = new THREE.MeshStandardMaterial({ map: ballTexture });
 const ball = new THREE.Mesh(ballGeometry, ballMaterial);
 ball.position.set(0, -1 + 0.22, 11); // Position at penalty spot, resting on the ground
 scene.add(ball);
 
-// --- Shooting Logic & State ---
+// Create Goalkeeper
+const goalkeeper = new THREE.Group();
+const keeperBodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red shirt
+
+const torsoGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
+const torso = new THREE.Mesh(torsoGeometry, keeperBodyMaterial);
+torso.name = 'torso'; // Name it for collision detection later
+goalkeeper.add(torso);
+
+const headGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac }); // Skin tone
+const head = new THREE.Mesh(headGeometry, headMaterial);
+head.position.y = 0.8;
+goalkeeper.add(head);
+
+// Position the keeper in the goal, standing on the ground plane
+goalkeeper.position.y = -1 + (1.2 / 2);
+goalkeeper.position.z = 0.5;
+scene.add(goalkeeper);
+
+
+// --- UI ---
+const scoreDisplay = document.getElementById('score-display');
+
+// --- Physics and Game State ---
+const clock = new THREE.Clock();
+const gravity = new THREE.Vector3(0, -9.8, 0);
+const initialBallPosition = ball.position.clone();
+const initialKeeperPosition = goalkeeper.position.clone();
+const keeperDiveDistance = goalWidth / 2 - 0.5;
+
+ball.velocity = new THREE.Vector3();
+let score = 0;
+let isShooting = false;
+let keeperState = 'idle'; // 'idle', 'divingLeft', 'divingRight'
+
+function resetScene() {
+    isShooting = false;
+    keeperState = 'idle';
+    ball.velocity.set(0, 0, 0);
+    setTimeout(() => {
+        ball.position.copy(initialBallPosition);
+        goalkeeper.position.copy(initialKeeperPosition);
+        goalkeeper.rotation.set(0, 0, 0);
+    }, 1000); // 1 second reset delay
+}
+
+// --- Shooting Logic ---
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
-const initialBallPosition = ball.position.clone();
-let isShooting = false;
-let shotTarget = new THREE.Vector3();
-let animationStartTime;
-const shotDuration = 500; // Shot duration in milliseconds
 
 window.addEventListener('click', (event) => {
-    // Don't allow a new shot while one is in progress
     if (isShooting) return;
 
-    // Normalize mouse coordinates
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-    // Update the raycaster with the camera and mouse position
     raycaster.setFromCamera(mouse, camera);
-
-    // Calculate objects intersecting the picking ray
     const intersects = raycaster.intersectObject(targetPlane);
 
     if (intersects.length > 0) {
-        shotTarget.copy(intersects[0].point);
+        const targetPoint = intersects[0].point;
+
+        const direction = new THREE.Vector3().subVectors(targetPoint, initialBallPosition);
+        direction.y *= 1.5;
+        const kickStrength = 18;
+        ball.velocity.copy(direction).normalize().multiplyScalar(kickStrength);
+
         isShooting = true;
-        animationStartTime = performance.now();
+
+        const diveRNG = Math.random();
+        if (diveRNG < 0.45) keeperState = 'divingLeft';
+        else if (diveRNG < 0.9) keeperState = 'divingRight';
+        else keeperState = 'idle';
     }
 });
 
-
 // Handle window resizing
 window.addEventListener('resize', () => {
-    // Update camera aspect ratio
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-
-    // Update renderer size
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
 });
 
-
 // Animation loop
 function animate() {
     requestAnimationFrame(animate);
+    const deltaTime = clock.getDelta();
 
     if (isShooting) {
-        const elapsedTime = performance.now() - animationStartTime;
-        const progress = Math.min(elapsedTime / shotDuration, 1);
+        ball.velocity.add(gravity.clone().multiplyScalar(deltaTime));
+        ball.position.add(ball.velocity.clone().multiplyScalar(deltaTime));
 
-        // Linearly interpolate the ball's position from start to target
-        ball.position.copy(initialBallPosition).lerp(shotTarget, progress);
-
-        // When the animation is complete
-        if (progress >= 1) {
-            isShooting = false;
-            // Reset ball position after a delay
-            setTimeout(() => {
-                ball.position.copy(initialBallPosition);
-            }, 1000); // 1-second delay before reset
+        const torso = goalkeeper.getObjectByName('torso');
+        if (torso) {
+            const ballBox = new THREE.Box3().setFromObject(ball);
+            const keeperBox = new THREE.Box3().setFromObject(torso);
+            if (ballBox.intersectsBox(keeperBox)) {
+                console.log("SAVE!");
+                resetScene();
+                return;
+            }
         }
+
+        // Goal/Miss Detection
+        if (ball.position.z <= 0) {
+            const inGoalX = Math.abs(ball.position.x) < goalWidth / 2;
+            const inGoalY = ball.position.y > -1 && ball.position.y < (goalHeight - 1);
+            if (inGoalX && inGoalY) {
+                console.log("GOAL!");
+                score++;
+                scoreDisplay.textContent = `Score: ${score}`;
+                resetScene();
+            } else {
+                console.log("MISS!");
+                resetScene();
+            }
+        }
+    }
+
+    // Goalkeeper animations
+    if (keeperState === 'idle' && !isShooting) {
+        goalkeeper.position.x = Math.sin(clock.getElapsedTime() * 0.8) * keeperDiveDistance;
+        goalkeeper.rotation.set(0,0,0);
+    } else if (keeperState.startsWith('diving')) {
+        const diveTargetX = keeperState === 'divingLeft' ? -keeperDiveDistance : keeperDiveDistance;
+        goalkeeper.position.x += (diveTargetX - goalkeeper.position.x) * 0.1;
+
+        const diveProgress = Math.abs(goalkeeper.position.x / keeperDiveDistance);
+        goalkeeper.rotation.z = (keeperState === 'divingLeft' ? 1 : -1) * (Math.PI / 3) * diveProgress;
     }
 
     renderer.render(scene, camera);

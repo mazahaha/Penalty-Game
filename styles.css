@@ -3,6 +3,17 @@ body {
     overflow: hidden; /* Prevent scrollbars */
 }
 
+#score-display {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    color: white;
+    font-size: 32px;
+    font-family: Arial, sans-serif;
+    text-shadow: 2px 2px 4px #000000;
+    z-index: 100;
+}
+
 #game-canvas {
     display: block;
     width: 100vw;
