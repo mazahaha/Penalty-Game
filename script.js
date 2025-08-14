@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 // 1. Scene
 const scene = new THREE.Scene();
@@ -48,13 +49,12 @@ scene.add(directionalLight);
 // Add a ground plane
 const textureLoader = new THREE.TextureLoader();
 
-// Add backdrop
-const backdropTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/pano.jpg');
-const backdropGeometry = new THREE.SphereGeometry(500, 60, 40);
-backdropGeometry.scale(-1, 1, 1); // Invert the geometry to face inward
-const backdropMaterial = new THREE.MeshBasicMaterial({ map: backdropTexture });
-const backdrop = new THREE.Mesh(backdropGeometry, backdropMaterial);
-scene.add(backdrop);
+// Add backdrop using an HDR environment map for realistic lighting
+new RGBELoader().load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/equirectangular/venice_sunset_1k.hdr', (texture) => {
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    scene.background = texture;
+    scene.environment = texture;
+});
 
 const grassTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/terrain/grasslight-big.jpg');
 grassTexture.wrapS = THREE.RepeatWrapping;
