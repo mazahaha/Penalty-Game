@@ -3,21 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Penalty Shootout</title>
+    <title>3D Penalty Shootout</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="game-container">
-        <div id="pitch">
-            <div id="goal">
-                <div class="post left"></div>
-                <div class="post right"></div>
-                <div class="crossbar"></div>
-                <div id="target-grid"></div>
-            </div>
-            <div id="ball"></div>
-        </div>
-    </div>
-    <script src="script.js"></script>
+    <canvas id="game-canvas"></canvas>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>
