@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 // 1. Scene
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); // Sky blue background
+// scene.background will be replaced by a skybox/backdrop
 
 // 2. Camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -17,6 +17,26 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 
+// --- Audio ---
+const listener = new THREE.AudioListener();
+camera.add(listener);
+const audioLoader = new THREE.AudioLoader();
+const kickSound = new THREE.Audio(listener);
+audioLoader.load('https://threejsfundamentals.org/threejs/resources/sounds/plop.ogg', (buffer) => {
+    kickSound.setBuffer(buffer);
+    kickSound.setVolume(0.5);
+});
+const saveSound = new THREE.Audio(listener);
+audioLoader.load('https://threejsfundamentals.org/threejs/resources/sounds/thump.ogg', (buffer) => {
+    saveSound.setBuffer(buffer);
+    saveSound.setVolume(0.5);
+});
+const goalSound = new THREE.Audio(listener);
+audioLoader.load('https://threejsfundamentals.org/threejs/resources/sounds/pop.ogg', (buffer) => {
+    goalSound.setBuffer(buffer);
+    goalSound.setVolume(0.5);
+});
+
 // Add lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
@@ -27,6 +47,15 @@ scene.add(directionalLight);
 
 // Add a ground plane
 const textureLoader = new THREE.TextureLoader();
+
+// Add backdrop
+const backdropTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/2294472375_24a3b8ef46_o.jpg');
+const backdropGeometry = new THREE.SphereGeometry(500, 60, 40);
+backdropGeometry.scale(-1, 1, 1); // Invert the geometry to face inward
+const backdropMaterial = new THREE.MeshBasicMaterial({ map: backdropTexture });
+const backdrop = new THREE.Mesh(backdropGeometry, backdropMaterial);
+scene.add(backdrop);
+
 const grassTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/terrain/grasslight-big.jpg');
 grassTexture.wrapS = THREE.RepeatWrapping;
 grassTexture.wrapT = THREE.RepeatWrapping;
@@ -74,7 +103,7 @@ scene.add(targetPlane);
 
 // Create Ball
 const ballGeometry = new THREE.SphereGeometry(0.22, 32, 32); // FIFA size 5 ball has ~22cm diameter
-const ballTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/checker.png');
+const ballTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/ball.png');
 const ballMaterial = new THREE.MeshStandardMaterial({ map: ballTexture });
 const ball = new THREE.Mesh(ballGeometry, ballMaterial);
 ball.position.set(0, -1 + 0.22, 11); // Position at penalty spot, resting on the ground
@@ -116,15 +145,23 @@ let score = 0;
 let isShooting = false;
 let keeperState = 'idle'; // 'idle', 'divingLeft', 'divingRight'
 
+const curveFactor = 0.05;
+function applyCurve(event) {
+    if (isShooting) {
+        ball.velocity.x += event.movementX * curveFactor;
+    }
+}
+
 function resetScene() {
     isShooting = false;
     keeperState = 'idle';
     ball.velocity.set(0, 0, 0);
+    window.removeEventListener('mousemove', applyCurve); // Important cleanup
     setTimeout(() => {
         ball.position.copy(initialBallPosition);
         goalkeeper.position.copy(initialKeeperPosition);
         goalkeeper.rotation.set(0, 0, 0);
-    }, 1000); // 1 second reset delay
+    }, 1000);
 }
 
 // --- Shooting Logic ---
@@ -148,11 +185,30 @@ window.addEventListener('click', (event) => {
         ball.velocity.copy(direction).normalize().multiplyScalar(kickStrength);
 
         isShooting = true;
+        kickSound.play();
+        window.addEventListener('mousemove', applyCurve);
 
-        const diveRNG = Math.random();
-        if (diveRNG < 0.45) keeperState = 'divingLeft';
-        else if (diveRNG < 0.9) keeperState = 'divingRight';
-        else keeperState = 'idle';
+        // --- Smarter Goalkeeper AI ---
+        // Predict where the ball will cross the goal line based on initial velocity.
+        // This simple prediction doesn't account for curve, making the AI beatable.
+        const timeToGoal = -initialBallPosition.z / ball.velocity.z;
+        const predictedX = initialBallPosition.x + ball.velocity.x * timeToGoal;
+
+        // Add some randomness/error to the AI's decision
+        const errorChance = Math.random();
+        if (errorChance < 0.25) { // 25% chance of making a random move
+            const directions = ['divingLeft', 'divingRight', 'idle'];
+            keeperState = directions[Math.floor(Math.random() * directions.length)];
+        } else {
+            // Make an educated guess based on the predicted landing spot
+            if (predictedX > keeperDiveDistance / 2) {
+                keeperState = 'divingRight';
+            } else if (predictedX < -keeperDiveDistance / 2) {
+                keeperState = 'divingLeft';
+            } else {
+                keeperState = 'idle';
+            }
+        }
     }
 });
 
@@ -179,6 +235,7 @@ function animate() {
             const keeperBox = new THREE.Box3().setFromObject(torso);
             if (ballBox.intersectsBox(keeperBox)) {
                 console.log("SAVE!");
+                saveSound.play();
                 resetScene();
                 return;
             }
@@ -192,6 +249,7 @@ function animate() {
                 console.log("GOAL!");
                 score++;
                 scoreDisplay.textContent = `Score: ${score}`;
+                goalSound.play();
                 resetScene();
             } else {
                 console.log("MISS!");
