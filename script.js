@@ -49,7 +49,7 @@ scene.add(directionalLight);
 const textureLoader = new THREE.TextureLoader();
 
 // Add backdrop
-const backdropTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/2294472375_24a3b8ef46_o.jpg');
+const backdropTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/pano.jpg');
 const backdropGeometry = new THREE.SphereGeometry(500, 60, 40);
 backdropGeometry.scale(-1, 1, 1); // Invert the geometry to face inward
 const backdropMaterial = new THREE.MeshBasicMaterial({ map: backdropTexture });
@@ -67,9 +67,39 @@ plane.rotation.x = -Math.PI / 2; // Rotate it to be horizontal
 plane.position.y = -1;
 scene.add(plane);
 
+// Field Markings
+const markings = new THREE.Group();
+const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const lineWidth = 0.1;
+const penaltyBoxWidth = 22;
+const penaltyBoxDepth = 12;
+
+// Penalty Box Lines
+const topLineGeo = new THREE.PlaneGeometry(penaltyBoxWidth, lineWidth);
+const topLine = new THREE.Mesh(topLineGeo, lineMaterial);
+topLine.rotation.x = -Math.PI / 2;
+topLine.position.set(0, 0, -penaltyBoxDepth);
+markings.add(topLine);
+
+const sideLineGeo = new THREE.PlaneGeometry(lineWidth, penaltyBoxDepth);
+const leftLine = new THREE.Mesh(sideLineGeo, lineMaterial);
+leftLine.rotation.x = -Math.PI / 2;
+leftLine.position.set(-penaltyBoxWidth / 2, 0, -penaltyBoxDepth / 2);
+markings.add(leftLine);
+
+const rightLine = new THREE.Mesh(sideLineGeo.clone(), lineMaterial);
+rightLine.rotation.x = -Math.PI / 2;
+rightLine.position.set(penaltyBoxWidth / 2, 0, -penaltyBoxDepth / 2);
+markings.add(rightLine);
+
+// Position the markings slightly above the ground to prevent z-fighting
+markings.position.y = -0.99;
+scene.add(markings);
+
+
 // Create Goal
 const goal = new THREE.Group();
-const postMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+const postMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 });
 const postThickness = 0.2;
 const goalHeight = 2.5;
 const goalWidth = 8;
@@ -92,6 +122,21 @@ const crossbar = new THREE.Mesh(crossbarGeometry, postMaterial);
 crossbar.position.set(0, goalHeight - 1, 0);
 goal.add(crossbar);
 
+// Create Net
+const netTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/grid.png');
+netTexture.wrapS = THREE.RepeatWrapping;
+netTexture.wrapT = THREE.RepeatWrapping;
+netTexture.repeat.set(goalWidth, goalHeight);
+const netMaterial = new THREE.MeshBasicMaterial({
+    map: netTexture,
+    transparent: true,
+    side: THREE.DoubleSide
+});
+const netGeometry = new THREE.PlaneGeometry(goalWidth, goalHeight);
+const netMesh = new THREE.Mesh(netGeometry, netMaterial);
+netMesh.position.set(0, goalHeight / 2 - 1, -0.5); // Position it in the middle of the goal depth
+goal.add(netMesh);
+
 scene.add(goal);
 
 // Create an invisible plane for raycasting
@@ -103,30 +148,71 @@ scene.add(targetPlane);
 
 // Create Ball
 const ballGeometry = new THREE.SphereGeometry(0.22, 32, 32); // FIFA size 5 ball has ~22cm diameter
-const ballTexture = textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/ball.png');
-const ballMaterial = new THREE.MeshStandardMaterial({ map: ballTexture });
+const ballTexture = textureLoader.load('https://threejsfundamentals.org/threejs/resources/images/football/Football.jpg');
+const ballNormalMap = textureLoader.load('https://threejsfundamentals.org/threejs/resources/images/football/Football_Normal.jpg');
+const ballMaterial = new THREE.MeshStandardMaterial({
+    map: ballTexture,
+    normalMap: ballNormalMap
+});
 const ball = new THREE.Mesh(ballGeometry, ballMaterial);
 ball.position.set(0, -1 + 0.22, 11); // Position at penalty spot, resting on the ground
 scene.add(ball);
 
 // Create Goalkeeper
 const goalkeeper = new THREE.Group();
-const keeperBodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red shirt
+const keeperMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, flatShading: true }); // Green jersey
+const shortsMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, flatShading: true });
+const skinMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac, flatShading: true });
+const glovesMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
 
-const torsoGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
-const torso = new THREE.Mesh(torsoGeometry, keeperBodyMaterial);
-torso.name = 'torso'; // Name it for collision detection later
+// Torso
+const torsoGeo = new THREE.BoxGeometry(0.8, 1.0, 0.4);
+const torso = new THREE.Mesh(torsoGeo, keeperMaterial);
+torso.name = 'torso';
+torso.position.y = 0.3;
 goalkeeper.add(torso);
 
-const headGeometry = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac }); // Skin tone
-const head = new THREE.Mesh(headGeometry, headMaterial);
-head.position.y = 0.8;
+// Shorts
+const shortsGeo = new THREE.BoxGeometry(0.8, 0.4, 0.4);
+const shorts = new THREE.Mesh(shortsGeo, shortsMaterial);
+shorts.position.y = -0.4;
+goalkeeper.add(shorts);
+
+// Head
+const headGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+const head = new THREE.Mesh(headGeo, skinMaterial);
+head.position.y = 1.0;
 goalkeeper.add(head);
 
-// Position the keeper in the goal, standing on the ground plane
-goalkeeper.position.y = -1 + (1.2 / 2);
-goalkeeper.position.z = 0.5;
+// Arms
+const armGeo = new THREE.BoxGeometry(0.2, 0.8, 0.2);
+const leftArm = new THREE.Mesh(armGeo, keeperMaterial);
+leftArm.position.set(-0.5, 0.4, 0);
+goalkeeper.add(leftArm);
+const rightArm = new THREE.Mesh(armGeo.clone(), keeperMaterial);
+rightArm.position.set(0.5, 0.4, 0);
+goalkeeper.add(rightArm);
+
+// Gloves
+const gloveGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+const leftGlove = new THREE.Mesh(gloveGeo, glovesMaterial);
+leftGlove.position.y = -0.5;
+leftArm.add(leftGlove); // Add to arm
+const rightGlove = new THREE.Mesh(gloveGeo.clone(), glovesMaterial);
+rightGlove.position.y = -0.5;
+rightArm.add(rightGlove); // Add to arm
+
+// Legs
+const legGeo = new THREE.BoxGeometry(0.3, 1.0, 0.3);
+const leftLeg = new THREE.Mesh(legGeo, shortsMaterial);
+leftLeg.position.set(-0.25, -1.1, 0);
+goalkeeper.add(leftLeg);
+const rightLeg = new THREE.Mesh(legGeo.clone(), shortsMaterial);
+rightLeg.position.set(0.25, -1.1, 0);
+goalkeeper.add(rightLeg);
+
+// Position the keeper group so his feet are on the ground
+goalkeeper.position.set(0, 0.7, 0.5);
 scene.add(goalkeeper);
 
 
